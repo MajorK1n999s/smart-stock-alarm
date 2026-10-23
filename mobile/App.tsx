@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { StatusBar } from "expo-status-bar";
 import { StyleSheet, View, Text, ScrollView, Pressable, TextInput } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -52,10 +52,84 @@ const initialPairs: ForexPair[] = [
 //const API_URL = 'http://192.168.1.37:3000/'
 
 export default function App() {
-  const [pairs] = useState<ForexPair[]>(initialPairs);
+  const [pairs, setPairs] = useState<ForexPair[]>(initialPairs);
   const [selectedPair, setSelectedPair] = useState<string | null>(null);
   const [targetPrice, setTargetPrice] = useState("");
   const [alarmMessage, setAlarmMessage] = useState("");
+  const [activeAlarms, setActiveAlarms] = useState<{ id: string; pair: string; target: number; active: boolean }[]>([]);
+
+  
+  useEffect(() => {
+    const triggered = activeAlarms
+      .filter((alarm) => alarm.active)
+      .map((alarm) => ({
+        alarm,
+        pair: pairs.find((item) => item.symbol === alarm.pair),
+      }))
+      .filter(
+        (item) =>
+          item.pair !== undefined &&
+          Number(item.pair.price) >= item.alarm.target
+      );
+
+    if (triggered.length === 0) {
+      return;
+    }
+
+    const triggeredIds = new Set(
+      triggered.map((item) => item.alarm.id)
+    );
+
+    setActiveAlarms((currentAlarms) =>
+      currentAlarms.map((alarm) =>
+        triggeredIds.has(alarm.id) && alarm.active
+          ? { ...alarm, active: false }
+          : alarm
+      )
+    );
+
+    setAlarmMessage((currentMessage) => {
+      const newMessages = triggered
+        .map(({ alarm, pair }) => {
+          if (!pair) {
+            return "";
+          }
+
+          return (
+            `Demo price alert: ${alarm.pair} reached ${pair.price} ` +
+            `(target: ${alarm.target.toFixed(5)})`
+          );
+        })
+        .filter(Boolean);
+
+      return [...new Set([
+        ...currentMessage.split("\n").filter(Boolean),
+        ...newMessages,
+      ])].join("\n");
+    });
+  }, [activeAlarms, pairs]);
+
+
+  useEffect( () => {
+    const timer = setInterval(() => {
+      setPairs((currentPrice) => 
+        currentPrice.map((pair) => {
+          const currentPrice = Number(pair.price);
+          const precision = pair.symbol.includes("JPY") ? 3 : 5;
+          const movement = 
+            (Math.random() - 0.5) *
+            (pair.symbol.includes("JPY") ? 0.1 : 0.001);
+
+            return{
+              ...pair,
+              price: (currentPrice + movement).toFixed(precision),
+            };
+        })
+      );
+    }, 3000);
+
+    return () => clearInterval(timer);
+  }, [])
 
   return (
     <SafeAreaView style={styles.container}>
@@ -102,13 +176,26 @@ export default function App() {
 
           <Pressable
             style={styles.setAlarmButton}
-            onPress={() => {
-              if (! targetPrice.trim() || Number(targetPrice) <= 0){
-                setAlarmMessage("Please enter a valid target price.");
+            onPress={() =>{
+              if(!targetPrice.trim() || !Number.isFinite(Number(targetPrice)) || Number(targetPrice) <= 0){
+                setAlarmMessage("Please enter the valid target price.");
                 return;
               }
 
-              setAlarmMessage(`Alarm set for ${selectedPair} at ${targetPrice}`);
+              if(!selectedPair){
+                setAlarmMessage("Please select currency pair.");
+                return;
+              }
+
+              const newAlarm = {
+                id: `${Date.now()}-${selectedPair}`,
+                pair: selectedPair,
+                target: Number(targetPrice),
+                active: true, 
+              };
+
+              setActiveAlarms((current) => [...current, newAlarm]);
+              setAlarmMessage(`Alarm set for ${selectedPair} at ${targetPrice.trim()}`);
             }}
           >
             <Text style={styles.setAlarmButtonText}>Set Alarm</Text>
