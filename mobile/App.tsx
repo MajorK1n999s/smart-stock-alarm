@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { StatusBar } from "expo-status-bar";
-import { StyleSheet, View, Text, ScrollView } from "react-native";
+import { StyleSheet, View, Text, ScrollView, Pressable } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 type ForexPair = {
@@ -49,31 +49,11 @@ const initialPairs: ForexPair[] = [
   },
 ];
 
-const API_URL = 'http://192.168.1.37:3000/'
+//const API_URL = 'http://192.168.1.37:3000/'
 
 export default function App() {
   const [pairs] = useState<ForexPair[]>(initialPairs);
-  // const [message, setMessage] = useState('Connecting to backend...')
-  // const [loading, setLoading] = useState(true);
-
-  // useEffect(() => {
-  //   fetch(API_URL)
-  //     .then((response) => {
-  //       if(!response.ok){
-  //         throw new Error('Server returned an error.');
-  //       }
-  //       return response.json();
-  //     })
-  //     .then((data) => {
-  //       setMessage(data.message ?? 'Connected, but no message received.');
-  //     })
-  //     .catch(()=> {
-  //       setMessage('Connection failed. Check Wi-Fi and backend server.');
-  //     })
-  //     .finally(() => {
-  //       setLoading(false);
-  //     })
-  // }, [])
+  const [selectedPair, setSelectedPair] = useState<string | null>(null);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -97,9 +77,23 @@ export default function App() {
         </View>
       </View>
 
+      {selectedPair && (
+        <View style = {styles.selectionInfo}>
+          <Text style = {styles.selectionText}>
+            Selected pair: {selectedPair}
+          </Text>
+        </View>
+      )}
+
       <ScrollView contentContainerStyle={styles.list}>
         {pairs.map((pair) => (
-          <View key={pair.symbol} style={styles.pairCard}>
+          <Pressable key={pair.symbol}
+            onPress={() => setSelectedPair(pair.symbol)}
+            style={[
+              styles.pairCard,
+              selectedPair === pair.symbol && styles.selectedPairCard
+            ]}>
+              
             <View style={styles.pairInfo}>
               <Text style={styles.pairSymbol}>{pair.symbol}</Text>
               <Text style={styles.pairName}>{pair.name}</Text>
@@ -116,7 +110,7 @@ export default function App() {
                 {pair.change}
               </Text>
             </View>
-          </View>
+          </Pressable>
         ))}
       </ScrollView>
 
@@ -202,6 +196,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
+  selectedPairCard: {
+    borderWidth: 2,
+    borderColor: "#60A5FA",
+  },
   pairInfo: {
     flex: 1,
     paddingRight: 8,
@@ -244,5 +242,17 @@ const styles = StyleSheet.create({
   footerText: {
     color: "#94A3B8",
     fontSize: 11,
+  },
+  selectionInfo: {
+    marginHorizontal: 18,
+    marginBottom: 12,
+    padding: 12,
+    backgroundColor: "#1E3A5F",
+    borderRadius: 10,
+  },
+  selectionText: {
+    color: "#BFDBFE",
+    fontSize: 13,
+    fontWeight: "600",
   },
 });
