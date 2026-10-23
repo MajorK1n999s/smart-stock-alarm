@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { StatusBar } from "expo-status-bar";
-import { StyleSheet, View, Text, ScrollView, Pressable } from "react-native";
+import { StyleSheet, View, Text, ScrollView, Pressable, TextInput } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 type ForexPair = {
@@ -54,6 +54,8 @@ const initialPairs: ForexPair[] = [
 export default function App() {
   const [pairs] = useState<ForexPair[]>(initialPairs);
   const [selectedPair, setSelectedPair] = useState<string | null>(null);
+  const [targetPrice, setTargetPrice] = useState("");
+  const [alarmMessage, setAlarmMessage] = useState("");
 
   return (
     <SafeAreaView style={styles.container}>
@@ -82,6 +84,39 @@ export default function App() {
           <Text style = {styles.selectionText}>
             Selected pair: {selectedPair}
           </Text>
+        </View>
+      )}
+
+      {selectedPair && (
+        <View style = {styles.alarmPanel}>
+          <Text style = {styles.alarmTitle}>Set Price Alarm</Text>
+
+          <TextInput
+            style={styles.priceInput}
+            value={targetPrice}
+            onChangeText={setTargetPrice}
+            placeholder="Enter Target Price"
+            placeholderTextColor="#94A3B8"
+            keyboardType="decimal-pad"
+          />
+
+          <Pressable
+            style={styles.setAlarmButton}
+            onPress={() => {
+              if (! targetPrice.trim() || Number(targetPrice) <= 0){
+                setAlarmMessage("Please enter a valid target price.");
+                return;
+              }
+
+              setAlarmMessage(`Alarm set for ${selectedPair} at ${targetPrice}`);
+            }}
+          >
+            <Text style={styles.setAlarmButtonText}>Set Alarm</Text>
+          </Pressable>
+
+          {alarmMessage !== "" && (
+            <Text style={styles.alarmMessage}>{alarmMessage}</Text>
+          )}
         </View>
       )}
 
@@ -254,5 +289,44 @@ const styles = StyleSheet.create({
     color: "#BFDBFE",
     fontSize: 13,
     fontWeight: "600",
+  },
+  alarmPanel: {
+    marginHorizontal: 18,
+    marginBottom: 14,
+    padding: 16,
+    backgroundColor: "#172235",
+    borderRadius: 14,
+  },
+  alarmTitle: {
+    color: "#F8FAFC",
+    fontSize: 16,
+    fontWeight: "bold",
+    marginBottom: 12,
+  },
+  priceInput: {
+    backgroundColor: "#0B1220",
+    borderWidth: 1,
+    borderColor: "#334155",
+    borderRadius: 10,
+    padding: 12,
+    color: "#F8FAFC",
+    fontSize: 16,
+  },
+  setAlarmButton: {
+    backgroundColor: "#2563EB",
+    padding: 14,
+    borderRadius: 10,
+    alignItems: "center",
+    marginTop: 12,
+  },
+  setAlarmButtonText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  alarmMessage: {
+    color: "#60A5FA",
+    fontSize: 14,
+    marginTop: 10,
   },
 });
