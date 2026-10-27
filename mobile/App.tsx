@@ -4,6 +4,12 @@ import { StyleSheet, View, Text, ScrollView, Pressable, TextInput, Modal } from 
 import { SafeAreaView } from "react-native-safe-area-context";
 import AlarmList from "./components/AlarmList";
 import { useAudioPlayer } from "expo-audio";
+import {
+  requestNotificationPermission,
+  scheduleAlarmNotification,
+  cancelAlarmNotification,
+} from "./notifications";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 type ForexPair = {
   symbol: string,
@@ -58,10 +64,55 @@ export default function App() {
   const [currentScreen, setCurrentScreen] = useState<"watchlist" | "alarms">("watchlist");
   const [selectedPair, setSelectedPair] = useState<string | null>(null);
   const [targetPrice, setTargetPrice] = useState("");
+  const [alarmDirection, setAlarmDirection] = useState<"buy" | "sell">("buy");
   const [alarmMessage, setAlarmMessage] = useState("");
-  const [activeAlarms, setActiveAlarms] = useState<{ id: string; pair: string; target: number; active: boolean }[]>([]);
+  const [activeAlarms, setActiveAlarms] = useState<{ id: string; pair: string; target: number; active: boolean; direction: "buy" | "sell"; notificationId?: string; }[]>([]);
   const alarmPlayer = useAudioPlayer( require("./assets/alarm.mp3"));
   const [alarmModelVisible, setAlarmModelVisible] = useState(false)
+  const [alarmsLoaded, setAlarmsLoaded] = useState(false);
+
+  useEffect(() => {
+    const loadAlarms = async () => {
+      try{
+        const savedAlarms = await AsyncStorage.getItem(
+          "smart-stock-alarm:activeAlarms"
+        );
+
+        if(savedAlarms !== null){
+          setActiveAlarms(JSON.parse(savedAlarms))
+        }
+      }
+      catch(error){
+        console.error("Failed to save alarms:", error)
+      }
+      finally{
+        setAlarmsLoaded(true)
+      }
+    }
+
+    loadAlarms();
+  }, [])
+
+  useEffect(() => {
+    if(!alarmsLoaded){
+      return;
+    }
+
+    const saveAlarms = async () => {
+      try{
+        await AsyncStorage.setItem(
+          "smart-stock-alarm:activeAlarms",
+          JSON.stringify(activeAlarms)
+        );
+      }
+      catch(error){
+        console.error("Failed to save alarms:", error);
+      }
+    };
+
+    saveAlarms()
+
+  }, [activeAlarms, alarmsLoaded])
   
   useEffect(() => {
     const triggered = activeAlarms
@@ -73,7 +124,11 @@ export default function App() {
       .filter(
         (item) =>
           item.pair !== undefined &&
-          Number(item.pair.price) >= item.alarm.target
+          (
+            (item.alarm.direction ?? "buy") === "buy"
+              ? Number(item.pair.price) >= item.alarm.target
+              : Number(item.pair.price) <= item.alarm.target
+          )
       );
 
     if (triggered.length === 0) {
@@ -82,6 +137,12 @@ export default function App() {
 
     alarmPlayer.seekTo(0);
     alarmPlayer.play();
+
+    triggered.forEach(({ alarm }) => {
+      scheduleAlarmNotification(alarm.pair, alarm.target, 1).catch((error) => {
+        console.error("Failed to schedule price-crossing notification:", error);
+      });
+    });
 
     const triggeredIds = new Set(
       triggered.map((item) => item.alarm.id)
@@ -218,6 +279,26 @@ export default function App() {
 
             <View style = {styles.alarmPanel}>
               <Text style = {styles.alarmTitle}>Set Price Alarm</Text>
+              <View style={{flexDirection: "row", gap: 10, marginBottom: 14}}>
+                {(["buy", "sell"] as const).map((direction) => (
+                  <Pressable
+                    key={direction}
+                    onPress={() => setAlarmDirection(direction)}
+                    style={{
+                      flex: 1,
+                      padding: 12,
+                      borderRadius: 10,
+                      alignItems: "center",
+                      backgroundColor:
+                        alarmDirection === direction ? "#2563EB" : "#334155",
+                    }}
+                  >
+                    <Text style={{ color: "#FFFFFF", fontWeight: "600" }}>
+                      {direction === "buy" ? "Buy (Price Rises)" : "Sell (Price Falls)"}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
 
               <TextInput
                 style={styles.priceInput}
@@ -243,26 +324,53 @@ export default function App() {
                 
                 <Pressable
                   style={styles.setAlarmButton}
-                  onPress={() =>{
-                    if(!targetPrice.trim() || !Number.isFinite(Number(targetPrice)) || Number(targetPrice) <= 0){
+                  onPress={async () => {
+                    if (
+                      !targetPrice.trim() ||
+                      !Number.isFinite(Number(targetPrice)) ||
+                      Number(targetPrice) <= 0
+                    ) {
                       setAlarmMessage("Please enter the valid target price.");
                       return;
                     }
 
-                    if(!selectedPair){
+                    if (!selectedPair) {
                       setAlarmMessage("Please select currency pair.");
                       return;
                     }
 
-                    const newAlarm = {
-                      id: `${Date.now()}-${selectedPair}`,
-                      pair: selectedPair,
-                      target: Number(targetPrice),
-                      active: true, 
-                    };
+                    try {
+                      const permitted = await requestNotificationPermission();
 
-                    setActiveAlarms((current) => [...current, newAlarm]);
-                    setAlarmMessage(`Alarm set for ${selectedPair} at ${targetPrice.trim()}`);
+                      if (!permitted) {
+                        setAlarmMessage("Please allow notifications to schedule alarms.");
+                        return;
+                      }
+
+                      const target = Number(targetPrice);
+                      // const notificationId = await scheduleAlarmNotification(
+                      //   selectedPair,
+                      //   target,
+                      //   60
+                      // );
+
+                      const newAlarm = {
+                        id: `${Date.now()}-${selectedPair}`,
+                        pair: selectedPair,
+                        target,
+                        direction: alarmDirection,
+                        active: true,
+                        //notificationId,
+                      };
+
+                      setActiveAlarms((current) => [...current, newAlarm]);
+                      setAlarmMessage(
+                        `Alarm set for ${selectedPair} at ${targetPrice.trim()}. Test notification in 1 minute.`
+                      );
+                    } catch (error) {
+                      console.error("Failed to schedule alarm notification:", error);
+                      setAlarmMessage("Could not schedule notification. Please try again.");
+                    }
                   }}
                 >
                   <Text style={styles.setAlarmButtonText}>Ok</Text>
@@ -312,21 +420,60 @@ export default function App() {
       {currentScreen === "alarms" && (
         <ScrollView contentContainerStyle={styles.list}>
           <AlarmList alarms={activeAlarms}
-            onDelete={(id) => {
+            onDelete={async (id) => {
+              const alarm = activeAlarms.find((item) => item.id === id);
+
+              if (alarm?.active && alarm?.notificationId) {
+                try {
+                  await cancelAlarmNotification(alarm.notificationId);
+                } catch (error) {
+                  console.error("Failed to cancel alarm notification:", error);
+                }
+              }
+
               setActiveAlarms((previousAlarms) =>
-                previousAlarms.filter((alarm) => alarm.id !== id) 
-              )
-            }} 
-            onEdit={(id, newTarget) => {
-              setActiveAlarms((previousAlarms) =>
-                previousAlarms.map((alarm) =>
-                  alarm.id === id ? {...alarm, target: newTarget, active: true }: alarm 
-                ) 
-              )
-            }} 
+                previousAlarms.filter((item) => item.id !== id)
+              );
+            }}
+            onEdit={async (id, newTarget) => {
+              const alarm = activeAlarms.find((item) => item.id === id);
+
+              if(!alarm) return;
+
+                try{
+                  if(alarm.notificationId){
+                    await cancelAlarmNotification(alarm.notificationId);
+                  }
+
+                  const notificationId = await scheduleAlarmNotification(
+                    alarm.pair,
+                    newTarget,
+                    60
+                  );
+
+                  setActiveAlarms((previousAlarms) =>
+                    previousAlarms.map((item) =>
+                      item.id === id
+                        ? {
+                            ...item,
+                            target: newTarget,
+                            active: true,
+                            notificationId,
+                          }
+                        : item
+                    )
+                  );
+                }
+                catch(error){
+                  console.error("Failed to update alarm notification:", error);
+                  setAlarmMessage("Could not update alarm notification. Please try again.");
+                }
+              }
+            } 
           />
-        </ScrollView>
-      )}
+          </ScrollView>
+        )
+      }
 
       <View style={styles.footer}>
         <Text style={styles.footerText}>

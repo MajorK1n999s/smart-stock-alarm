@@ -5,6 +5,7 @@ type Alarm = {
     id: string;
     pair: string;
     target: number;
+    direction?: "buy" | "sell";
     active: boolean;
 }
 
@@ -35,6 +36,9 @@ export default function AlarmList ({ alarms, onDelete, onEdit }: AlarmListProps)
                 <View key={alarm.id} style={styles.alarmCard}>
                     <View>
                         <Text style={styles.pair}>{alarm.pair}</Text>
+                        <Text style={styles.target}>
+                            Direction: {(alarm.direction ?? "buy").toUpperCase()}
+                        </Text>
                         {editingId === alarm.id ? (
                             <TextInput
                                 style={styles.targetInput}
